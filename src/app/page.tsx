@@ -1,103 +1,126 @@
-import Image from "next/image";
+import React from "react";
+import { supabase } from "@/lib/supabaseClient";
+import { Table, TableHeader, TableRow, TableHead, TableBody, TableCell } from "@/components/ui/table";
+import { Badge } from "@/components/ui/badge";
+import { Separator } from "@/components/ui/separator";
+import { CheckCircle, Clock, Circle } from "lucide-react";
+import { AnimatedNumber } from "@/components/AnimatedNumber";
 
-export default function Home() {
+const STAGES = [
+  { key: "รวบรวมเมล็ดพันธุ์", label: "รวบรวมเมล็ดพันธุ์" },
+  { key: "เพาะชำในโรงเรือน", label: "เพาะชำในโรงเรือน" },
+  { key: "เตรียมพื้นที่ปลูก", label: "เตรียมพื้นที่ปลูก" },
+  { key: "วันลงปลูกจริง", label: "วันลงปลูกจริง" },
+];
+
+function Timeline({ current }: { current: string }) {
+  let found = false;
   return (
-    <div className="font-sans grid grid-rows-[20px_1fr_20px] items-center justify-items-center min-h-screen p-8 pb-20 gap-16 sm:p-20">
-      <main className="flex flex-col gap-[32px] row-start-2 items-center sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={180}
-          height={38}
-          priority
-        />
-        <ol className="font-mono list-inside list-decimal text-sm/6 text-center sm:text-left">
-          <li className="mb-2 tracking-[-.01em]">
-            Get started by editing{" "}
-            <code className="bg-black/[.05] dark:bg-white/[.06] font-mono font-semibold px-1 py-0.5 rounded">
-              src/app/page.tsx
-            </code>
-            .
+    <ol className="relative border-l border-muted-foreground/30 ml-4">
+      {STAGES.map((stage, idx) => {
+        let status: "done" | "doing" | "next" = "next";
+        if (!found && current === stage.key) {
+          status = "doing";
+          found = true;
+        } else if (!found) {
+          status = "done";
+        }
+        return (
+          <li key={stage.key} className="mb-8 ml-6 flex items-center">
+            <span className="absolute -left-3 flex items-center justify-center">
+              {status === "done" && <CheckCircle className="text-green-500" size={24} />}
+              {status === "doing" && <Clock className="text-yellow-500 animate-pulse" size={24} />}
+              {status === "next" && <Circle className="text-muted-foreground" size={24} />}
+            </span>
+            <div className="flex flex-col gap-1">
+              <span className={`font-semibold ${status === "done" ? "text-green-600" : status === "doing" ? "text-yellow-600" : "text-muted-foreground"}`}>{stage.label}</span>
+              <span className="text-xs text-muted-foreground">
+                {status === "done" && "เสร็จสิ้น"}
+                {status === "doing" && "กำลังดำเนินการ"}
+                {status === "next" && "เร็วๆ นี้"}
+              </span>
+            </div>
           </li>
-          <li className="tracking-[-.01em]">
-            Save and see your changes instantly.
-          </li>
-        </ol>
+        );
+      })}
+    </ol>
+  );
+}
 
-        <div className="flex gap-4 items-center flex-col sm:flex-row">
-          <a
-            className="rounded-full border border-solid border-transparent transition-colors flex items-center justify-center bg-foreground text-background gap-2 hover:bg-[#383838] dark:hover:bg-[#ccc] font-medium text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 sm:w-auto"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={20}
-              height={20}
-            />
-            Deploy now
-          </a>
-          <a
-            className="rounded-full border border-solid border-black/[.08] dark:border-white/[.145] transition-colors flex items-center justify-center hover:bg-[#f2f2f2] dark:hover:bg-[#1a1a1a] hover:border-transparent font-medium text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 w-full sm:w-auto md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Read our docs
-          </a>
+export default async function Home() {
+  // ดึงข้อมูลต้นกล้า (seedlings)
+  const { data: seedlings } = await supabase.from("seedlings").select("species, height_range, count");
+  const safeSeedlings = Array.isArray(seedlings) ? seedlings : [];
+  // ดึงสถานะโครงการ
+  const { data: projectStatus } = await supabase.from("project_status").select("current_stage").single();
+
+  // รวมทุกต้น
+  const total = safeSeedlings.reduce((sum, s) => sum + (s.count || 0), 0);
+
+  // แยกตามชนิด
+  const bySpecies = Object.entries(
+    safeSeedlings.reduce((acc, s) => {
+      if (!acc[s.species]) acc[s.species] = 0;
+      acc[s.species] += s.count || 0;
+      return acc;
+    }, {} as Record<string, number>)
+  );
+
+  return (
+    <main className="min-h-screen flex flex-col items-center justify-center gap-8 p-8">
+      {/* ตัวนับต้นกล้า (รวมทุกต้น, แยกตามชนิด, แยกตามช่วงความสูง) */}
+      <section className="w-full max-w-2xl bg-card rounded-lg shadow p-6 mb-8">
+        <h2 className="text-xl font-bold mb-4">สรุปจำนวนต้นกล้า</h2>
+        <div className="flex items-center gap-4 mb-6">
+          <span className="text-4xl font-extrabold text-primary">
+            <AnimatedNumber value={total} />
+          </span>
+          <span className="text-lg">ต้น</span>
+          <Badge variant="outline">รวมทุกชนิด</Badge>
         </div>
-      </main>
-      <footer className="row-start-3 flex gap-[24px] flex-wrap items-center justify-center">
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/file.svg"
-            alt="File icon"
-            width={16}
-            height={16}
-          />
-          Learn
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/window.svg"
-            alt="Window icon"
-            width={16}
-            height={16}
-          />
-          Examples
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/globe.svg"
-            alt="Globe icon"
-            width={16}
-            height={16}
-          />
-          Go to nextjs.org →
-        </a>
-      </footer>
-    </div>
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead>ชนิด</TableHead>
+              <TableHead>จำนวน</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {bySpecies.map(([species, count]) => (
+              <TableRow key={species}>
+                <TableCell>{species}</TableCell>
+                <TableCell>{count}</TableCell>
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+        <div className="mt-6">
+          <div className="font-semibold mb-2">แยกตามชนิดและช่วงความสูง</div>
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>ชนิด</TableHead>
+                <TableHead>ช่วงความสูง (cm)</TableHead>
+                <TableHead>จำนวน</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {safeSeedlings.map((row, i) => (
+                <TableRow key={i}>
+                  <TableCell>{row.species}</TableCell>
+                  <TableCell>{row.height_range}</TableCell>
+                  <TableCell>{row.count}</TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </div>
+      </section>
+      {/* สถานะโครงการ (Timeline) */}
+      <section className="w-full max-w-2xl bg-card rounded-lg shadow p-6">
+        <h2 className="text-xl font-bold mb-4">สถานะโครงการ</h2>
+        <Timeline current={projectStatus?.current_stage || "รวบรวมเมล็ดพันธุ์"} />
+      </section>
+    </main>
   );
 }
