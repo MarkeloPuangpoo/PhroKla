@@ -103,16 +103,9 @@ pnpm dev
 
 ---
 
-## 🧑‍💻 Contributors
-
-- [Your Name](https://github.com/your-username) (Maintainer)
-- ... (เพิ่มรายชื่อ contributors ที่นี่)
-
----
-
 ## License
 
-MIT
+PONDET PUANGPOO
 
 ---
 
