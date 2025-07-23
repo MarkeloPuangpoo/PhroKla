@@ -1,37 +1,119 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# 🌱 Phro Kla (เพราะกล้า) - Seedling Management System
 
-## Getting Started
+"เพราะกล้า" คือระบบเว็บแอปพลิเคชันสำหรับบริหารจัดการโครงการเพาะชำและปลูกต้นกล้าแบบครบวงจร สร้างขึ้นเพื่อช่วยให้ผู้ดูแลโครงการสามารถติดตามข้อมูลทั้งหมดได้อย่างมีประสิทธิภาพ ตั้งแต่การรวบรวมเมล็ดพันธุ์, การดูแลในโรงเพาะชำ, ไปจนถึงการส่งมอบให้กับเครือข่าย
 
-First, run the development server:
+## 🖥️ โครงสร้างระบบ
+
+- **Public Dashboard (`/`)**: หน้าสรุปภาพรวมโครงการสำหรับบุคคลทั่วไป แสดงจำนวนต้นกล้า, สัดส่วนชนิด, และสถานะโครงการ
+- **Admin Dashboard (`/admin`)**: ระบบหลังบ้านสำหรับผู้ดูแลโครงการ (ต้องเข้าสู่ระบบ)
+
+---
+
+## ✨ ฟีเจอร์หลัก
+
+- **แดชบอร์ด (Admin Dashboard):** กราฟภาพรวม, สถิติ, แนวโน้มการเติบโต
+- **จัดการข้อมูลต้นกล้า:** เพิ่ม/ลบ/แก้ไข/ค้นหา/ฟิลเตอร์
+- **จัดการรุ่น/แหล่งที่มา:** บันทึกข้อมูลรุ่น, พิกัด, แหล่งที่มา
+- **สมุดบันทึก (Logbook):** บันทึกกิจกรรมในโรงเพาะชำ
+- **จัดการเครือข่าย (Partner):** ข้อมูลผู้รับ/เครือข่าย
+- **ระบบใบคำขอ (Request Order):** สร้าง/อนุมัติ/ตัดสต็อก/พิมพ์ใบส่งมอบ
+- **ติดตามสถานะโครงการ:** อัปเดตและแสดงสถานะในรูปแบบ Timeline
+- **ระบบล็อกอิน/ออกจากระบบ:** เฉพาะผู้ดูแลเท่านั้นที่เข้าถึง `/admin` ได้
+
+---
+
+## 🛠️ Tech Stack
+
+- **Framework:** [Next.js](https://nextjs.org/) (App Router)
+- **Language:** [TypeScript](https://www.typescriptlang.org/)
+- **Backend & Database:** [Supabase](https://supabase.io/)
+- **Styling:** [Tailwind CSS](https://tailwindcss.com/)
+- **UI Components:** [shadcn/ui](https://ui.shadcn.com/)
+- **Data Visualization:** [Recharts](https://recharts.org/)
+- **Animation:** [Framer Motion](https://www.framer.com/motion/)
+- **Print:** [react-to-print](https://www.npmjs.com/package/react-to-print)
+
+---
+
+## 🚀 เริ่มต้นใช้งาน
+
+### Prerequisites
+
+- [Node.js](https://nodejs.org/) (v18.18.0 หรือใหม่กว่า)
+- `npm`, `yarn`, หรือ `pnpm`
+
+### 1. Clone และติดตั้ง dependencies
+
+```bash
+git clone https://github.com/your-username/PhroKla.git
+cd PhroKla
+
+npm install
+# หรือ
+yarn install
+# หรือ
+pnpm install
+```
+
+### 2. ตั้งค่า Environment Variables
+
+สร้างไฟล์ `.env.local` แล้วใส่ค่า Supabase ของคุณ
+
+```env
+NEXT_PUBLIC_SUPABASE_URL=YOUR_SUPABASE_URL
+NEXT_PUBLIC_SUPABASE_ANON_KEY=YOUR_SUPABASE_ANON_KEY
+```
+
+### 3. รันโปรเจกต์
 
 ```bash
 npm run dev
-# or
+# หรือ
 yarn dev
-# or
+# หรือ
 pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+เปิด [http://localhost:3000](http://localhost:3000) เพื่อดูหน้า Public Dashboard  
+เปิด [http://localhost:3000/admin](http://localhost:3000/admin) เพื่อเข้าสู่ระบบหลังบ้าน (ต้อง login)
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+---
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+## 🔐 การเข้าสู่ระบบ (Admin)
 
-## Learn More
+- สมัครผู้ใช้ใหม่หรือเพิ่มผู้ใช้ผ่าน Supabase Auth Dashboard
+- เข้าสู่ระบบที่ `/login` ด้วยอีเมลและรหัสผ่านที่ลงทะเบียนไว้
+- เมื่อ logout แล้วจะไม่สามารถเข้าถึง `/admin` ได้จนกว่าจะ login ใหม่
 
-To learn more about Next.js, take a look at the following resources:
+---
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+## 📝 หมายเหตุ
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+- ระบบป้องกัน route guard: ทุกหน้า `/admin` จะ redirect ไป `/login` หากยังไม่ได้ login
+- สามารถปรับแต่งเมนู, สี, และฟีเจอร์เพิ่มเติมได้ในไฟล์ `src/data/menu.ts` และโฟลเดอร์ `src/components/`
 
-## Deploy on Vercel
+---
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+## 📂 โครงสร้างโฟลเดอร์หลัก
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
-"# PhroKla" 
+- `src/app/` — หน้าเว็บทั้งหมด (public, admin, login)
+- `src/components/` — UI components และ reusable logic
+- `src/data/menu.ts` — เมนู sidebar ของ admin
+- `src/lib/supabaseClient.ts` — การเชื่อมต่อ Supabase
+
+---
+
+## 🧑‍💻 Contributors
+
+- [Your Name](https://github.com/your-username) (Maintainer)
+- ... (เพิ่มรายชื่อ contributors ที่นี่)
+
+---
+
+## License
+
+MIT
+
+---
+
+หากมีข้อสงสัยหรือพบปัญหา สามารถเปิด issue หรือ pull request ได้เลย!

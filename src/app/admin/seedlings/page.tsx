@@ -1,158 +1,281 @@
 "use client";
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback, useMemo, FC } from "react";
 import { supabase } from "@/lib/supabaseClient";
 import { Button } from "@/components/ui/button";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogClose, DialogTrigger } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogTrigger } from "@/components/ui/dialog";
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Input } from "@/components/ui/input";
-import { Card, CardContent } from "@/components/ui/card";
-import { PlusIcon, TrashIcon, PencilIcon } from "@heroicons/react/24/outline";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Table, TableHeader, TableRow, TableHead, TableBody, TableCell } from "@/components/ui/table";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { PlusCircle, Trash2, Pencil, Search, Leaf, Hash, MapPin, Sprout } from "lucide-react";
+import { useRouter } from "next/navigation";
 
-export default function SeedlingsPage() {
-  const [seedlings, setSeedlings] = useState<any[]>([]);
-  const [open, setOpen] = useState(false);
-  const [form, setForm] = useState({ species: "", height_range: "", count: 0, batch_id: "", zone_id: "" });
-  const [editId, setEditId] = useState<number|null>(null);
-  const [speciesFilter, setSpeciesFilter] = useState<string>("");
-  const [heightFilter, setHeightFilter] = useState<string>("");
-  const [search, setSearch] = useState<string>("");
-  const [batches, setBatches] = useState<any[]>([]);
-  const [zones, setZones] = useState<any[]>([]);
+// --- Type Definitions ---
+type Seedling = { id: number; species: string; height_range: string; count: number; batch_id: number | null; zone_id: number | null; };
+type Batch = { id: number; batch_code: string };
+type Zone = { id: number; zone_code: string };
+const initialFormState = { species: "", height_range: "", count: 0, batch_id: "", zone_id: "" };
 
-  useEffect(() => {
-    supabase.from("seedlings").select("id,species,height_range,count,batch_id,zone_id").then(({ data }) => {
-      if (data) setSeedlings(data);
-    });
-    supabase.from("batches").select("id,batch_code").then(({ data }) => {
-      if (data) setBatches(data);
-    });
-    supabase.from("nursery_zones").select("id,zone_code").then(({ data }) => {
-      if (data) setZones(data);
-    });
-  }, []);
+// --- Sub-component: Seedling Form ---
+const SeedlingForm: FC<{
+  batches: Batch[]; zones: Zone[];
+  onSubmit: (form: typeof initialFormState) => void;
+  onClose: () => void;
+  initialData?: typeof initialFormState;
+}> = ({ batches, zones, onSubmit, onClose, initialData }) => {
+  const [form, setForm] = useState(initialData || initialFormState);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
-  async function handleSaveSeedling() {
-    if (!form.species || !form.height_range || !form.count) return;
-    await supabase.from("seedlings").insert([{ ...form, count: Number(form.count), batch_id: form.batch_id || null, zone_id: form.zone_id || null }]);
-    setOpen(false);
-    const { data } = await supabase.from("seedlings").select("id,species,height_range,count,batch_id,zone_id");
-    if (data) setSeedlings(data);
-  }
-  async function handleDeleteSeedling(id: number) {
-    await supabase.from("seedlings").delete().eq("id", id);
-    const { data } = await supabase.from("seedlings").select("id,species,height_range,count,batch_id,zone_id");
-    if (data) setSeedlings(data);
-  }
-  async function handleEditSeedling() {
-    if (!form.species || !form.height_range || !form.count || !editId) return;
-    await supabase.from("seedlings").update({ ...form, count: Number(form.count), batch_id: form.batch_id || null, zone_id: form.zone_id || null }).eq("id", editId);
-    setOpen(false);
-    setEditId(null);
-    const { data } = await supabase.from("seedlings").select("id,species,height_range,count,batch_id,zone_id");
-    if (data) setSeedlings(data);
-  }
+  useEffect(() => { setForm(initialData || initialFormState); }, [initialData]);
 
-  // สร้างรายการชนิดต้นกล้าไม่ซ้ำสำหรับ filter
-  const uniqueSpecies = Array.from(new Set(seedlings.map(s => s.species)));
-  // สร้างรายการช่วงความสูงไม่ซ้ำสำหรับ filter
-  const uniqueHeights = Array.from(new Set(seedlings.map(s => s.height_range)));
-  // กรองข้อมูลตาม speciesFilter, heightFilter, และ search
-  const filteredSeedlings = seedlings.filter(s =>
-    (speciesFilter ? s.species === speciesFilter : true) &&
-    (heightFilter ? s.height_range === heightFilter : true) &&
-    (
-      !search ||
-      s.species.toLowerCase().includes(search.toLowerCase()) ||
-      s.height_range.toLowerCase().includes(search.toLowerCase()) ||
-      String(s.count).includes(search)
-    )
-  );
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => setForm(f => ({ ...f, [e.target.name]: e.target.value }));
+  const handleSelectChange = (name: 'batch_id' | 'zone_id') => (value: string) => setForm(f => ({ ...f, [name]: value }));
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setIsSubmitting(true);
+    await onSubmit(form);
+    setIsSubmitting(false);
+  };
 
   return (
-    <div className="flex flex-col gap-8">
-      <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
-        <div className="font-semibold text-lg">ข้อมูลต้นกล้า</div>
-        <div className="flex items-center gap-2 flex-wrap">
-          <label htmlFor="species-filter" className="text-sm">กรองตามชนิด:</label>
-          <select id="species-filter" className="border rounded px-2 py-1 text-sm" value={speciesFilter} onChange={e => setSpeciesFilter(e.target.value)}>
-            <option value="">ทั้งหมด</option>
-            {uniqueSpecies.map(species => (
-              <option key={species} value={species}>{species}</option>
-            ))}
-          </select>
-          <label htmlFor="height-filter" className="text-sm ml-2">กรองตามช่วงความสูง:</label>
-          <select id="height-filter" className="border rounded px-2 py-1 text-sm" value={heightFilter} onChange={e => setHeightFilter(e.target.value)}>
-            <option value="">ทั้งหมด</option>
-            {uniqueHeights.map(height => (
-              <option key={height} value={height}>{height}</option>
-            ))}
-          </select>
-          <input type="text" placeholder="ค้นหา..." className="border rounded px-2 py-1 text-sm ml-2" value={search} onChange={e => setSearch(e.target.value)} />
+    <form onSubmit={handleSubmit} className="grid gap-4 py-4">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <Input name="species" placeholder="ชนิดของต้นไม้" value={form.species} onChange={handleChange} required />
+        <Input name="height_range" placeholder="ช่วงความสูง (เช่น 10-15 cm)" value={form.height_range} onChange={handleChange} required />
+      </div>
+      <Input name="count" type="number" placeholder="จำนวน" value={form.count} onChange={handleChange} min={0} required />
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <Select value={String(form.batch_id || '')} onValueChange={handleSelectChange('batch_id')}>
+          <SelectTrigger><SelectValue placeholder="เลือกรุ่น (Batch)" /></SelectTrigger>
+          <SelectContent>{batches.map(b => <SelectItem key={b.id} value={String(b.id)}>{b.batch_code}</SelectItem>)}</SelectContent>
+        </Select>
+        <Select value={String(form.zone_id || '')} onValueChange={handleSelectChange('zone_id')}>
+          <SelectTrigger><SelectValue placeholder="เลือกโซน (Zone)" /></SelectTrigger>
+          <SelectContent>{zones.map(z => <SelectItem key={z.id} value={String(z.id)}>{z.zone_code}</SelectItem>)}</SelectContent>
+        </Select>
+      </div>
+      <DialogFooter>
+        <Button type="button" variant="outline" onClick={onClose}>ยกเลิก</Button>
+        <Button type="submit" disabled={isSubmitting}>{isSubmitting ? "กำลังบันทึก..." : "บันทึกข้อมูล"}</Button>
+      </DialogFooter>
+    </form>
+  );
+};
+
+// --- Main Page Component ---
+export default function SeedlingsPage() {
+  const router = useRouter();
+  useEffect(() => {
+    supabase.auth.getUser().then(({ data }) => {
+      if (!data?.user) {
+        router.replace("/login");
+      }
+    });
+  }, [router]);
+
+  const [seedlings, setSeedlings] = useState<Seedling[]>([]);
+  const [batches, setBatches] = useState<Batch[]>([]);
+  const [zones, setZones] = useState<Zone[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  
+  const [isFormOpen, setIsFormOpen] = useState(false);
+  const [editingSeedling, setEditingSeedling] = useState<Seedling | null>(null);
+  const [deletingSeedlingId, setDeletingSeedlingId] = useState<number | null>(null);
+
+  const [filters, setFilters] = useState({ search: "", species: "", height: "" });
+
+  const fetchData = useCallback(async () => {
+    setIsLoading(true);
+    try {
+      const [sldRes, bthRes, zonRes] = await Promise.all([
+        supabase.from("seedlings").select("*"),
+        supabase.from("batches").select("id,batch_code"),
+        supabase.from("nursery_zones").select("id,zone_code")
+      ]);
+      if (sldRes.error) throw sldRes.error; if (bthRes.error) throw bthRes.error; if (zonRes.error) throw zonRes.error;
+      setSeedlings(sldRes.data as Seedling[]); setBatches(bthRes.data as Batch[]); setZones(zonRes.data as Zone[]);
+    } catch (err: any) { setError("ไม่สามารถโหลดข้อมูลได้: " + err.message); } finally { setIsLoading(false); }
+  }, []);
+
+  useEffect(() => { fetchData(); }, [fetchData]);
+
+  const uniqueSpecies = useMemo(() => Array.from(new Set(seedlings.map(s => s.species))), [seedlings]);
+  const uniqueHeights = useMemo(() => Array.from(new Set(seedlings.map(s => s.height_range))), [seedlings]);
+  
+  const filteredSeedlings = useMemo(() => {
+    const searchLower = filters.search.toLowerCase();
+    return seedlings.filter(s =>
+      (filters.species ? s.species === filters.species : true) &&
+      (filters.height ? s.height_range === filters.height : true) &&
+      (
+        !searchLower ||
+        s.species.toLowerCase().includes(searchLower) ||
+        s.height_range.toLowerCase().includes(searchLower) ||
+        String(s.count).includes(searchLower)
+      )
+    );
+  }, [seedlings, filters]);
+
+  const handleFormSubmit = async (form: typeof initialFormState) => {
+    const dataToUpsert = {
+      ...form,
+      count: Number(form.count),
+      batch_id: form.batch_id ? Number(form.batch_id) : null,
+      zone_id: form.zone_id ? Number(form.zone_id) : null,
+    };
+
+    const query = editingSeedling
+      ? supabase.from("seedlings").update(dataToUpsert).eq("id", editingSeedling.id)
+      : supabase.from("seedlings").insert([dataToUpsert]);
+
+    const { error } = await query;
+    if (error) { alert("เกิดข้อผิดพลาด: " + error.message); } else {
+      setIsFormOpen(false);
+      setEditingSeedling(null);
+      await fetchData();
+    }
+  };
+
+  const handleDelete = async () => {
+    if (deletingSeedlingId === null) return;
+    const { error } = await supabase.from("seedlings").delete().eq("id", deletingSeedlingId);
+    if (error) { alert("เกิดข้อผิดพลาด: " + error.message); } else {
+      await fetchData();
+    }
+    setDeletingSeedlingId(null);
+  };
+
+  const getBatchCode = (id: number | null) => batches.find(b => b.id === id)?.batch_code || '-';
+  const getZoneCode = (id: number | null) => zones.find(z => z.id === id)?.zone_code || '-';
+
+  return (
+    <div className="space-y-8">
+      {/* Header */}
+      <header className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+        <div>
+          <h1 className="text-3xl font-bold text-foreground">ข้อมูลต้นกล้า</h1>
+          <p className="text-muted-foreground">จัดการสต็อกต้นกล้าทั้งหมดในโครงการ</p>
         </div>
-        <Dialog open={open} onOpenChange={setOpen}>
-          <DialogTrigger asChild>
-            <Button className="gap-2" onClick={() => { setForm({ species: "", height_range: "", count: 0, batch_id: "", zone_id: "" }); setEditId(null); }}><PlusIcon className="w-4 h-4" /> เพิ่มข้อมูล</Button>
-          </DialogTrigger>
-          <DialogContent>
-            <DialogHeader>
-              <DialogTitle>{editId ? "แก้ไข" : "เพิ่ม"}ข้อมูลต้นกล้า</DialogTitle>
-            </DialogHeader>
-            <div className="flex flex-col gap-3 py-2">
-              <Input placeholder="ชนิดของต้นไม้" value={form.species} onChange={e => setForm(f => ({ ...f, species: e.target.value }))} />
-              <Input placeholder="ช่วงความสูง (เช่น 10-15)" value={form.height_range} onChange={e => setForm(f => ({ ...f, height_range: e.target.value }))} />
-              <Input type="number" placeholder="จำนวน" value={form.count} onChange={e => setForm(f => ({ ...f, count: Number(e.target.value) }))} min={0} />
-              <div className="flex gap-2">
-                <select className="border rounded px-2 py-1 text-sm" value={form.batch_id} onChange={e => setForm(f => ({ ...f, batch_id: e.target.value }))}>
-                  <option value="">เลือกรุ่น (Batch)</option>
-                  {batches.map((b: any) => (
-                    <option key={b.id} value={b.id}>{b.batch_code}</option>
-                  ))}
-                </select>
-                <select className="border rounded px-2 py-1 text-sm" value={form.zone_id} onChange={e => setForm(f => ({ ...f, zone_id: e.target.value }))}>
-                  <option value="">เลือกโซน (Zone)</option>
-                  {zones.map((z: any) => (
-                    <option key={z.id} value={z.id}>{z.zone_code}</option>
-                  ))}
-                </select>
-              </div>
+        <Button className="gap-2 w-full sm:w-auto" onClick={() => { setEditingSeedling(null); setIsFormOpen(true); }}>
+          <PlusCircle className="h-5 w-5" /> เพิ่มข้อมูลต้นกล้า
+        </Button>
+      </header>
+
+      {/* Main Content Card */}
+      <Card className="shadow-md">
+        <CardHeader>
+          <div className="flex flex-col md:flex-row gap-4 justify-between">
+            <div className="relative w-full md:max-w-xs">
+              <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+              <Input placeholder="ค้นหาชนิด, ความสูง, จำนวน..." className="pl-8" value={filters.search} onChange={e => setFilters(f => ({ ...f, search: e.target.value }))} />
             </div>
-            <DialogFooter>
-              <Button type="submit" onClick={editId ? handleEditSeedling : handleSaveSeedling}>บันทึก</Button>
-              <DialogClose asChild>
-                <Button variant="outline">ยกเลิก</Button>
-              </DialogClose>
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
-      </div>
-      <div className="overflow-x-auto rounded-lg border">
-        <table className="min-w-full text-sm">
-          <thead className="bg-muted">
-            <tr>
-              <th className="px-3 py-2 text-left">ชนิด</th>
-              <th className="px-3 py-2 text-left">ช่วงความสูง (cm)</th>
-              <th className="px-3 py-2 text-right">จำนวน</th>
-              <th className="px-3 py-2 text-left">รุ่น (Batch)</th>
-              <th className="px-3 py-2 text-left">โซน (Zone)</th>
-              <th className="px-3 py-2 text-center">จัดการ</th>
-            </tr>
-          </thead>
-          <tbody>
-            {filteredSeedlings.map((row) => (
-              <tr key={row.id} className="border-b last:border-b-0 hover:bg-primary/5">
-                <td className="px-3 py-2">{row.species}</td>
-                <td className="px-3 py-2">{row.height_range}</td>
-                <td className="px-3 py-2 text-right">{row.count}</td>
-                <td className="px-3 py-2">{batches.find((b: any) => b.id === row.batch_id)?.batch_code || '-'}</td>
-                <td className="px-3 py-2">{zones.find((z: any) => z.id === row.zone_id)?.zone_code || '-'}</td>
-                <td className="px-3 py-2 text-center flex gap-2 justify-center">
-                  <Button size="icon" variant="outline" className="rounded-full" onClick={() => { setForm({ species: row.species, height_range: row.height_range, count: row.count, batch_id: row.batch_id || "", zone_id: row.zone_id || "" }); setEditId(row.id); setOpen(true); }}><PencilIcon className="w-4 h-4" /></Button>
-                  <Button size="icon" variant="destructive" className="rounded-full" onClick={() => handleDeleteSeedling(row.id)}><TrashIcon className="w-4 h-4" /></Button>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+            <div className="flex flex-col sm:flex-row gap-2">
+              <Select value={filters.species} onValueChange={val => setFilters(f => ({ ...f, species: val }))}>
+                <SelectTrigger><SelectValue placeholder="กรองตามชนิด" /></SelectTrigger>
+                <SelectContent>{uniqueSpecies.map(s => <SelectItem key={s} value={s}>{s}</SelectItem>)}</SelectContent>
+              </Select>
+              <Select value={filters.height} onValueChange={val => setFilters(f => ({ ...f, height: val }))}>
+                <SelectTrigger><SelectValue placeholder="กรองตามความสูง" /></SelectTrigger>
+                <SelectContent>{uniqueHeights.map(h => <SelectItem key={h} value={h}>{h}</SelectItem>)}</SelectContent>
+              </Select>
+            </div>
+          </div>
+        </CardHeader>
+        <CardContent>
+          {/* Content rendering logic */}
+          {isLoading ? <div className="text-center py-10">กำลังโหลด...</div> : error ? <div className="text-center text-destructive py-10">{error}</div> : (
+            <>
+              {/* Mobile Card View */}
+              <div className="md:hidden space-y-4">
+                {filteredSeedlings.map(s => (
+                  <Card key={s.id} className="p-4 space-y-3">
+                    <div className="flex justify-between items-start">
+                      <div className="font-semibold text-primary flex items-center gap-2"><Leaf size={16}/>{s.species}</div>
+                      <div className="flex gap-2">
+                        <Button size="icon" variant="ghost" className="h-8 w-8" onClick={() => { setEditingSeedling(s); setIsFormOpen(true); }}><Pencil size={16}/></Button>
+                        <Button size="icon" variant="ghost" className="h-8 w-8 text-destructive hover:text-destructive" onClick={() => setDeletingSeedlingId(s.id)}><Trash2 size={16}/></Button>
+                      </div>
+                    </div>
+                    <div className="border-b"></div>
+                    <div className="grid grid-cols-2 gap-2 text-sm">
+                      <div className="flex items-center gap-2"><Sprout size={14} className="text-muted-foreground"/>{s.height_range} cm</div>
+                      <div className="flex items-center gap-2"><Hash size={14} className="text-muted-foreground"/>{s.count.toLocaleString()} ต้น</div>
+                      <div className="flex items-center gap-2"><Hash size={14} className="text-muted-foreground"/>Batch: {getBatchCode(s.batch_id)}</div>
+                      <div className="flex items-center gap-2"><MapPin size={14} className="text-muted-foreground"/>Zone: {getZoneCode(s.zone_id)}</div>
+                    </div>
+                  </Card>
+                ))}
+              </div>
+
+              {/* Desktop Table View */}
+              <div className="hidden md:block border rounded-lg">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>ชนิด</TableHead><TableHead>ช่วงความสูง (cm)</TableHead>
+                      <TableHead>จำนวน</TableHead><TableHead>รุ่น (Batch)</TableHead>
+                      <TableHead>โซน (Zone)</TableHead><TableHead className="text-right">จัดการ</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {filteredSeedlings.map(s => (
+                      <TableRow key={s.id}>
+                        <TableCell className="font-medium">{s.species}</TableCell>
+                        <TableCell>{s.height_range}</TableCell>
+                        <TableCell>{s.count.toLocaleString()}</TableCell>
+                        <TableCell>{getBatchCode(s.batch_id)}</TableCell>
+                        <TableCell>{getZoneCode(s.zone_id)}</TableCell>
+                        <TableCell className="text-right">
+                          <Button size="icon" variant="ghost" onClick={() => { setEditingSeedling(s); setIsFormOpen(true); }}><Pencil className="h-4 w-4" /></Button>
+                          <Button size="icon" variant="ghost" className="text-destructive hover:text-destructive" onClick={() => setDeletingSeedlingId(s.id)}><Trash2 className="h-4 w-4" /></Button>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
+            </>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Dialog for Add/Edit Form */}
+      <Dialog open={isFormOpen} onOpenChange={setIsFormOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>{editingSeedling ? "แก้ไข" : "เพิ่ม"}ข้อมูลต้นกล้า</DialogTitle>
+          </DialogHeader>
+          <SeedlingForm 
+            batches={batches} zones={zones} 
+            initialData={editingSeedling ? {
+              species: editingSeedling.species,
+              height_range: editingSeedling.height_range,
+              count: editingSeedling.count,
+              batch_id: String(editingSeedling.batch_id || ''),
+              zone_id: String(editingSeedling.zone_id || ''),
+            } : undefined}
+            onSubmit={handleFormSubmit} 
+            onClose={() => setIsFormOpen(false)} 
+          />
+        </DialogContent>
+      </Dialog>
+      
+      {/* Dialog for Delete Confirmation */}
+      <AlertDialog open={deletingSeedlingId !== null} onOpenChange={() => setDeletingSeedlingId(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>ยืนยันการลบ?</AlertDialogTitle>
+            <AlertDialogDescription>การกระทำนี้ไม่สามารถย้อนกลับได้ ข้อมูลต้นกล้านี้จะถูกลบออกจากระบบอย่างถาวร</AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>ยกเลิก</AlertDialogCancel>
+            <AlertDialogAction onClick={handleDelete}>ยืนยัน</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
-} 
+}
