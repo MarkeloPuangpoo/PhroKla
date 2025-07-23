@@ -1,20 +1,24 @@
 "use client";
 import { useState } from "react";
-import { UserCircleIcon, HomeIcon, FireIcon, ChartBarIcon } from "@heroicons/react/24/outline";
+import { UserCircleIcon, HomeIcon, FireIcon, ChartBarIcon, BookOpenIcon, UsersIcon, ClipboardDocumentListIcon, MapPinIcon } from "@heroicons/react/24/outline";
 import Link from "next/link";
 
 const menu = [
   { name: "แดชบอร์ด", href: "/admin", icon: HomeIcon },
   { name: "ข้อมูลต้นกล้า", href: "/admin/seedlings", icon: FireIcon },
+  { name: "รุ่น/แหล่งที่มา", href: "/admin/batches", icon: MapPinIcon },
+  { name: "Logbook", href: "/admin/logbook", icon: BookOpenIcon },
+  { name: "Partner/เครือข่าย", href: "/admin/partners", icon: UsersIcon },
+  { name: "Request Order", href: "/admin/requests", icon: ClipboardDocumentListIcon },
   { name: "สถานะโครงการ", href: "/admin/status", icon: ChartBarIcon },
 ];
 
 export function DashboardShell({ children }: { children: React.ReactNode }) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   return (
-    <div className="flex min-h-screen">
+    <div className="flex min-h-screen w-full">
       {/* Sidebar (responsive) */}
-      <aside className={`fixed z-40 top-0 left-0 h-screen w-64 bg-white border-r flex flex-col justify-between py-6 px-4 shadow-sm transition-transform duration-300 md:static md:h-screen md:translate-x-0 ${sidebarOpen ? "translate-x-0" : "-translate-x-full"} md:flex`}>
+      <aside className={`fixed z-40 top-0 left-0 w-64 bg-white border-r flex flex-col justify-between py-6 px-4 shadow-sm transition-transform duration-300 md:static md:min-h-screen md:h-auto md:translate-x-0 ${sidebarOpen ? "translate-x-0" : "-translate-x-full"} md:flex`}>
         <div>
           <div className="flex items-center gap-2 mb-8">
             <span className="bg-primary text-white rounded-full w-10 h-10 flex items-center justify-center font-bold text-xl">🌱</span>

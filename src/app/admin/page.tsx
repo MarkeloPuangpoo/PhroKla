@@ -2,15 +2,19 @@
 import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabaseClient";
 import { Card, CardContent } from "@/components/ui/card";
-import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from "recharts";
+import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, BarChart, Bar, XAxis, YAxis, Legend, LineChart, Line } from "recharts";
 
 const COLORS = ["#34d399", "#60a5fa", "#fbbf24", "#f87171", "#a78bfa", "#38bdf8", "#f472b6", "#facc15", "#4ade80", "#818cf8"];
 
 export default function AdminPage() {
   const [seedlings, setSeedlings] = useState<any[]>([]);
+  const [batches, setBatches] = useState<any[]>([]);
   useEffect(() => {
-    supabase.from("seedlings").select("id,species,height_range,count").then(({ data }) => {
+    supabase.from("seedlings").select("id,species,height_range,count,batch_id").then(({ data }) => {
       if (data) setSeedlings(data);
+    });
+    supabase.from("batches").select("id,batch_code,collected_at").then(({ data }) => {
+      if (data) setBatches(data);
     });
   }, []);
 
@@ -25,6 +29,19 @@ export default function AdminPage() {
     acc[s.height_range] += s.count || 0;
     return acc;
   }, {} as Record<string, number>)).map(([height, count]) => ({ height, count }));
+
+  // Line Chart: แนวโน้มการเติบโต (จำนวนต้นกล้าต่อ batch ตามวันที่เก็บ)
+  const batchCountMap: Record<string, number> = {};
+  seedlings.forEach(s => {
+    const batch = batches.find((b: any) => b.id === s.batch_id);
+    if (batch && batch.collected_at) {
+      if (!batchCountMap[batch.collected_at]) batchCountMap[batch.collected_at] = 0;
+      batchCountMap[batch.collected_at] += s.count || 0;
+    }
+  });
+  const growthTrendArr = Object.entries(batchCountMap)
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([date, count]) => ({ date, count }));
 
   return (
     <div className="flex flex-col gap-8">
@@ -49,7 +66,7 @@ export default function AdminPage() {
           </CardContent>
         </Card>
       </div>
-      {/* กราฟ */}
+      {/* กราฟแบบ responsive */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         <Card className="shadow border-0">
           <CardContent className="pt-6">
@@ -63,6 +80,34 @@ export default function AdminPage() {
                 </Pie>
                 <Tooltip />
               </PieChart>
+            </ResponsiveContainer>
+          </CardContent>
+        </Card>
+        <Card className="shadow border-0">
+          <CardContent className="pt-6">
+            <div className="font-semibold mb-2">เปรียบเทียบจำนวนต้นกล้าแต่ละชนิด (Bar Chart)</div>
+            <ResponsiveContainer width="100%" height={260}>
+              <BarChart data={speciesStats} margin={{ top: 10, right: 30, left: 0, bottom: 5 }}>
+                <XAxis dataKey="species" />
+                <YAxis allowDecimals={false} />
+                <Tooltip />
+                <Legend />
+                <Bar dataKey="count" fill="#34d399" />
+              </BarChart>
+            </ResponsiveContainer>
+          </CardContent>
+        </Card>
+        <Card className="shadow border-0">
+          <CardContent className="pt-6">
+            <div className="font-semibold mb-2">แนวโน้มการเติบโตของต้นกล้า (Line Chart)</div>
+            <ResponsiveContainer width="100%" height={260}>
+              <LineChart data={growthTrendArr} margin={{ top: 10, right: 30, left: 0, bottom: 5 }}>
+                <XAxis dataKey="date" />
+                <YAxis allowDecimals={false} />
+                <Tooltip />
+                <Legend />
+                <Line type="monotone" dataKey="count" stroke="#60a5fa" strokeWidth={2} dot={{ r: 3 }} />
+              </LineChart>
             </ResponsiveContainer>
           </CardContent>
         </Card>

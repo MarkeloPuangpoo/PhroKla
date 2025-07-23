@@ -1,37 +1,41 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
 
-## Getting Started
+## การเริ่มต้นใช้งาน
 
-First, run the development server:
+1. **ติดตั้ง dependencies**
+   ```bash
+   npm install
+   ```
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
-```
+2. **ตั้งค่าตัวแปรแวดล้อม (Environment Variables)**
+   - สร้างไฟล์ `.env.local` ที่ root ของโปรเจกต์
+   - เพิ่มค่าเช่น
+     ```
+     NEXT_PUBLIC_SUPABASE_URL=your-supabase-url
+     NEXT_PUBLIC_SUPABASE_ANON_KEY=your-supabase-anon-key
+     ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+3. **เริ่มเซิร์ฟเวอร์สำหรับพัฒนา**
+   ```bash
+   npm run dev
+   ```
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+4. **เปิดเว็บในเบราว์เซอร์**
+   - ไปที่ [http://localhost:3000](http://localhost:3000)
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+## การ deploy
 
-## Learn More
+สามารถ deploy ขึ้น Vercel, Netlify หรือแพลตฟอร์มที่รองรับ Next.js ได้ทันที
 
-To learn more about Next.js, take a look at the following resources:
+## คำสั่งที่ใช้บ่อย
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+- `npm run dev` — รันเซิร์ฟเวอร์สำหรับพัฒนา
+- `npm run build` — สร้าง production build
+- `npm start` — รัน production build
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+## License
 
-## Deploy on Vercel
+MIT
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+---
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
-"# PhroKla" 
+> หากต้องการข้อมูลเพิ่มเติมหรือคู่มือการใช้งาน สามารถติดต่อผู้พัฒนาได้โดยตรง
