@@ -10,12 +10,14 @@ import { Table, TableHeader, TableRow, TableHead, TableBody, TableCell } from "@
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { PlusCircle, Trash2, Pencil, Search, Leaf, Hash, MapPin, Sprout } from "lucide-react";
 import { useRouter } from "next/navigation";
+import { SearchBar, SearchQuery } from "@/components/SearchBar";
+import { FilterPanel, FilterCriteria } from "@/components/FilterPanel";
 
 // --- Type Definitions ---
-type Seedling = { id: number; species: string; height_range: string; count: number; batch_id: number | null; zone_id: number | null; };
-type Batch = { id: number; batch_code: string };
+type Seedling = { id: number; species: string; height_range: string; count: number; batch_id: number | null; zone_id: number | null; survived_count?: number; dead_count?: number };
+type Batch = { id: number; batch_code: string; collected_at: string };
 type Zone = { id: number; zone_code: string };
-const initialFormState = { species: "", height_range: "", count: 0, batch_id: "", zone_id: "" };
+const initialFormState = { species: "", height_range: "", count: 0, batch_id: "", zone_id: "", survived_count: 0, dead_count: 0 };
 
 // --- Sub-component: Seedling Form ---
 const SeedlingForm: FC<{
@@ -45,7 +47,11 @@ const SeedlingForm: FC<{
         <Input name="species" placeholder="ชนิดของต้นไม้" value={form.species} onChange={handleChange} required />
         <Input name="height_range" placeholder="ช่วงความสูง (เช่น 10-15 cm)" value={form.height_range} onChange={handleChange} required />
       </div>
-      <Input name="count" type="number" placeholder="จำนวน" value={form.count} onChange={handleChange} min={0} required />
+      <Input name="count" type="number" placeholder="จำนวนปลูก" value={form.count} onChange={handleChange} min={0} required />
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <Input name="survived_count" type="number" placeholder="จำนวนรอด" value={form.survived_count} onChange={handleChange} min={0} />
+        <Input name="dead_count" type="number" placeholder="จำนวนตาย" value={form.dead_count} onChange={handleChange} min={0} />
+      </div>
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <Select value={String(form.batch_id || '')} onValueChange={handleSelectChange('batch_id')}>
           <SelectTrigger><SelectValue placeholder="เลือกรุ่น (Batch)" /></SelectTrigger>
@@ -63,6 +69,22 @@ const SeedlingForm: FC<{
     </form>
   );
 };
+
+function exportSeedlingsToCSV(seedlings: any[]) {
+  if (!seedlings.length) return;
+  const fields = Object.keys(seedlings[0]);
+  const csv = [fields.join(",")].concat(
+    seedlings.map(row => fields.map(f => `"${(row[f] ?? "").toString().replace(/"/g, '""')}"`).join(","))
+  ).join("\r\n");
+  const blob = new Blob([csv], { type: "text/csv" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `seedlings_export_${new Date().toISOString().slice(0,10)}.csv`;
+  document.body.appendChild(a);
+  a.click();
+  setTimeout(() => { document.body.removeChild(a); URL.revokeObjectURL(url); }, 100);
+}
 
 // --- Main Page Component ---
 export default function SeedlingsPage() {
@@ -85,14 +107,34 @@ export default function SeedlingsPage() {
   const [editingSeedling, setEditingSeedling] = useState<Seedling | null>(null);
   const [deletingSeedlingId, setDeletingSeedlingId] = useState<number | null>(null);
 
-  const [filters, setFilters] = useState({ search: "", species: "", height: "" });
+  const [savedQueries, setSavedQueries] = useState<{ name: string; query: SearchQuery }[]>(() => {
+    if (typeof window !== "undefined") {
+      try {
+        return JSON.parse(localStorage.getItem("seedlings_saved_queries") || "[]");
+      } catch {
+        return [];
+      }
+    }
+    return [];
+  });
+
+  const saveQuery = (query: SearchQuery) => {
+    const name = prompt("ตั้งชื่อคิวรีนี้:");
+    if (!name) return;
+    const newSaved = [...savedQueries, { name, query }];
+    setSavedQueries(newSaved);
+    localStorage.setItem("seedlings_saved_queries", JSON.stringify(newSaved));
+  };
+
+  const [advancedFilters, setAdvancedFilters] = useState<FilterCriteria>({});
+  const [searchQuery, setSearchQuery] = useState<SearchQuery>({ text: "" });
 
   const fetchData = useCallback(async () => {
     setIsLoading(true);
     try {
       const [sldRes, bthRes, zonRes] = await Promise.all([
         supabase.from("seedlings").select("*"),
-        supabase.from("batches").select("id,batch_code"),
+        supabase.from("batches").select("id,batch_code,collected_at"),
         supabase.from("nursery_zones").select("id,zone_code")
       ]);
       if (sldRes.error) throw sldRes.error; if (bthRes.error) throw bthRes.error; if (zonRes.error) throw zonRes.error;
@@ -102,22 +144,47 @@ export default function SeedlingsPage() {
 
   useEffect(() => { fetchData(); }, [fetchData]);
 
-  const uniqueSpecies = useMemo(() => Array.from(new Set(seedlings.map(s => s.species))), [seedlings]);
-  const uniqueHeights = useMemo(() => Array.from(new Set(seedlings.map(s => s.height_range))), [seedlings]);
-  
-  const filteredSeedlings = useMemo(() => {
-    const searchLower = filters.search.toLowerCase();
-    return seedlings.filter(s =>
-      (filters.species ? s.species === filters.species : true) &&
-      (filters.height ? s.height_range === filters.height : true) &&
-      (
-        !searchLower ||
+  // ฟังก์ชันรวมการค้นหา/กรอง
+  const applyAllFilters = (data: Seedling[]) => {
+    let filtered = [...data];
+    // Full-text search
+    if (searchQuery.text) {
+      const searchLower = searchQuery.text.toLowerCase();
+      filtered = filtered.filter(s =>
         s.species.toLowerCase().includes(searchLower) ||
         s.height_range.toLowerCase().includes(searchLower) ||
         String(s.count).includes(searchLower)
-      )
-    );
-  }, [seedlings, filters]);
+      );
+    }
+    // Multi-criteria (species, height)
+    if (searchQuery.species) filtered = filtered.filter(s => s.species === searchQuery.species);
+    if (searchQuery.height) filtered = filtered.filter(s => s.height_range === searchQuery.height);
+    // Date range
+    if (searchQuery.dateFrom) filtered = filtered.filter(s => {
+      const batch = batches.find(b => b.id === s.batch_id);
+      return batch && batch.collected_at >= searchQuery.dateFrom!;
+    });
+    if (searchQuery.dateTo) filtered = filtered.filter(s => {
+      const batch = batches.find(b => b.id === s.batch_id);
+      return batch && batch.collected_at <= searchQuery.dateTo!;
+    });
+    // Advanced multi-select
+    if (advancedFilters.species?.length) filtered = filtered.filter(s => advancedFilters.species!.includes(s.species));
+    if (advancedFilters.height?.length) filtered = filtered.filter(s => advancedFilters.height!.includes(s.height_range));
+    if (advancedFilters.batch?.length) filtered = filtered.filter(s => advancedFilters.batch!.includes(getBatchCode(s.batch_id)));
+    if (advancedFilters.zone?.length) filtered = filtered.filter(s => advancedFilters.zone!.includes(getZoneCode(s.zone_id)));
+    if (advancedFilters.dateFrom) filtered = filtered.filter(s => {
+      const batch = batches.find(b => b.id === s.batch_id);
+      return batch && batch.collected_at >= advancedFilters.dateFrom!;
+    });
+    if (advancedFilters.dateTo) filtered = filtered.filter(s => {
+      const batch = batches.find(b => b.id === s.batch_id);
+      return batch && batch.collected_at <= advancedFilters.dateTo!;
+    });
+    return filtered;
+  };
+
+  const filteredSeedlings = useMemo(() => applyAllFilters(seedlings), [seedlings, searchQuery, advancedFilters, batches]);
 
   const handleFormSubmit = async (form: typeof initialFormState) => {
     const dataToUpsert = {
@@ -164,23 +231,19 @@ export default function SeedlingsPage() {
         </Button>
       </header>
 
+      <div className="flex justify-end mb-2">
+        <Button variant="outline" onClick={() => exportSeedlingsToCSV(seedlings)}>
+          Export CSV
+        </Button>
+      </div>
+
       {/* Main Content Card */}
       <Card className="shadow-md">
         <CardHeader>
           <div className="flex flex-col md:flex-row gap-4 justify-between">
             <div className="relative w-full md:max-w-xs">
               <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
-              <Input placeholder="ค้นหาชนิด, ความสูง, จำนวน..." className="pl-8" value={filters.search} onChange={e => setFilters(f => ({ ...f, search: e.target.value }))} />
-            </div>
-            <div className="flex flex-col sm:flex-row gap-2">
-              <Select value={filters.species} onValueChange={val => setFilters(f => ({ ...f, species: val }))}>
-                <SelectTrigger><SelectValue placeholder="กรองตามชนิด" /></SelectTrigger>
-                <SelectContent>{uniqueSpecies.map(s => <SelectItem key={s} value={s}>{s}</SelectItem>)}</SelectContent>
-              </Select>
-              <Select value={filters.height} onValueChange={val => setFilters(f => ({ ...f, height: val }))}>
-                <SelectTrigger><SelectValue placeholder="กรองตามความสูง" /></SelectTrigger>
-                <SelectContent>{uniqueHeights.map(h => <SelectItem key={h} value={h}>{h}</SelectItem>)}</SelectContent>
-              </Select>
+              <Input placeholder="ค้นหาชนิด, ความสูง, จำนวน..." className="pl-8" value={searchQuery.text} onChange={e => setSearchQuery(q => ({ ...q, text: e.target.value }))} />
             </div>
           </div>
         </CardHeader>
@@ -216,7 +279,8 @@ export default function SeedlingsPage() {
                   <TableHeader>
                     <TableRow>
                       <TableHead>ชนิด</TableHead><TableHead>ช่วงความสูง (cm)</TableHead>
-                      <TableHead>จำนวน</TableHead><TableHead>รุ่น (Batch)</TableHead>
+                      <TableHead>จำนวน</TableHead><TableHead>รอด/ตาย</TableHead>
+                      <TableHead>รุ่น (Batch)</TableHead>
                       <TableHead>โซน (Zone)</TableHead><TableHead className="text-right">จัดการ</TableHead>
                     </TableRow>
                   </TableHeader>
@@ -226,6 +290,7 @@ export default function SeedlingsPage() {
                         <TableCell className="font-medium">{s.species}</TableCell>
                         <TableCell>{s.height_range}</TableCell>
                         <TableCell>{s.count.toLocaleString()}</TableCell>
+                        <TableCell>{typeof s.survived_count === 'number' ? s.survived_count : '-'} / {typeof s.dead_count === 'number' ? s.dead_count : '-'}</TableCell>
                         <TableCell>{getBatchCode(s.batch_id)}</TableCell>
                         <TableCell>{getZoneCode(s.zone_id)}</TableCell>
                         <TableCell className="text-right">
@@ -256,6 +321,8 @@ export default function SeedlingsPage() {
               count: editingSeedling.count,
               batch_id: String(editingSeedling.batch_id || ''),
               zone_id: String(editingSeedling.zone_id || ''),
+              survived_count: editingSeedling.survived_count ?? 0,
+              dead_count: editingSeedling.dead_count ?? 0,
             } : undefined}
             onSubmit={handleFormSubmit} 
             onClose={() => setIsFormOpen(false)} 

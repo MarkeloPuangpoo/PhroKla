@@ -93,6 +93,22 @@ const SkeletonLoader = () => (
   </div>
 );
 
+function exportPartnersToCSV(partners: any[]) {
+  if (!partners.length) return;
+  const fields = Object.keys(partners[0]);
+  const csv = [fields.join(",")].concat(
+    partners.map(row => fields.map(f => `"${(row[f] ?? "").toString().replace(/"/g, '""')}"`).join(","))
+  ).join("\r\n");
+  const blob = new Blob([csv], { type: "text/csv" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `partners_export_${new Date().toISOString().slice(0,10)}.csv`;
+  document.body.appendChild(a);
+  a.click();
+  setTimeout(() => { document.body.removeChild(a); URL.revokeObjectURL(url); }, 100);
+}
+
 // --- Main Page Component ---
 export default function PartnersPage() {
   const router = useRouter();
@@ -184,6 +200,11 @@ export default function PartnersPage() {
 
   return (
     <div className="space-y-8">
+      <div className="flex justify-end mb-2">
+        <Button variant="outline" onClick={() => exportPartnersToCSV(partners)}>
+          Export CSV
+        </Button>
+      </div>
       {/* Page Header */}
       <header className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>

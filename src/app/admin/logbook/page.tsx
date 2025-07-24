@@ -105,6 +105,22 @@ const TimelineSkeleton = () => (
   </div>
 );
 
+function exportLogsToCSV(logs: any[]) {
+  if (!logs.length) return;
+  const fields = Object.keys(logs[0]);
+  const csv = [fields.join(",")].concat(
+    logs.map(row => fields.map(f => `"${(row[f] ?? "").toString().replace(/"/g, '""')}"`).join(","))
+  ).join("\r\n");
+  const blob = new Blob([csv], { type: "text/csv" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `logbook_export_${new Date().toISOString().slice(0,10)}.csv`;
+  document.body.appendChild(a);
+  a.click();
+  setTimeout(() => { document.body.removeChild(a); URL.revokeObjectURL(url); }, 100);
+}
+
 // --- Main Page Component ---
 export default function LogbookPage() {
   const router = useRouter();
@@ -195,6 +211,12 @@ export default function LogbookPage() {
           </DialogContent>
         </Dialog>
       </header>
+
+      <div className="flex justify-end mb-2">
+        <Button variant="outline" onClick={() => exportLogsToCSV(logs)}>
+          Export CSV
+        </Button>
+      </div>
 
       {/* Timeline View */}
       <Card className="shadow-md">

@@ -143,6 +143,22 @@ const RequestForm: FC<{
   );
 };
 
+function exportRequestsToCSV(requests: any[]) {
+  if (!requests.length) return;
+  const fields = Object.keys(requests[0]);
+  const csv = [fields.join(",")].concat(
+    requests.map(row => fields.map(f => `"${(row[f] ?? "").toString().replace(/"/g, '""')}"`).join(","))
+  ).join("\r\n");
+  const blob = new Blob([csv], { type: "text/csv" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `requests_export_${new Date().toISOString().slice(0,10)}.csv`;
+  document.body.appendChild(a);
+  a.click();
+  setTimeout(() => { document.body.removeChild(a); URL.revokeObjectURL(url); }, 100);
+}
+
 // --- Main Page Component ---
 export default function RequestsPage() {
   const router = useRouter();
@@ -234,6 +250,11 @@ export default function RequestsPage() {
             </div>
           ) : (
             <>
+              <div className="flex justify-end mb-2">
+                <Button variant="outline" onClick={() => exportRequestsToCSV(requests)}>
+                  Export CSV
+                </Button>
+              </div>
               {/* Mobile Card View */}
               <div className="md:hidden space-y-4">
                 {requests.map(req => (

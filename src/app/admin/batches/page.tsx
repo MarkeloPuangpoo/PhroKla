@@ -8,6 +8,10 @@ import { Table, TableHeader, TableRow, TableHead, TableBody, TableCell } from "@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogTrigger } from "@/components/ui/dialog";
 import { PlusCircle, MapPin, Calendar, Hash, Globe, StickyNote } from "lucide-react";
 import { useRouter } from "next/navigation";
+import dynamic from "next/dynamic";
+const LeafletMapClient = dynamic(() => import("@/components/LeafletMapClient").then(mod => mod.LeafletMapClient), { ssr: false });
+import type { MapMarker } from "@/components/LeafletMapClient";
+import { WeatherWidget } from "@/components/WeatherWidget";
 
 // --- Define a clear type for our data ---
 type Batch = {
@@ -109,6 +113,22 @@ const SkeletonLoader = () => (
   </div>
 );
 
+function exportBatchesToCSV(batches: any[]) {
+  if (!batches.length) return;
+  const fields = Object.keys(batches[0]);
+  const csv = [fields.join(",")].concat(
+    batches.map(row => fields.map(f => `"${(row[f] ?? "").toString().replace(/"/g, '""')}"`).join(","))
+  ).join("\r\n");
+  const blob = new Blob([csv], { type: "text/csv" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `batches_export_${new Date().toISOString().slice(0,10)}.csv`;
+  document.body.appendChild(a);
+  a.click();
+  setTimeout(() => { document.body.removeChild(a); URL.revokeObjectURL(url); }, 100);
+}
+
 // --- Main Page Component ---
 export default function BatchesPage() {
   const router = useRouter();
@@ -191,6 +211,7 @@ export default function BatchesPage() {
                 <TableHead><MapPin className="inline h-4 w-4 mr-1" />แหล่งที่มา</TableHead>
                 <TableHead><Globe className="inline h-4 w-4 mr-1" />พิกัด (Lat, Lng)</TableHead>
                 <TableHead><StickyNote className="inline h-4 w-4 mr-1" />หมายเหตุ</TableHead>
+                <TableHead>อากาศ</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -201,6 +222,13 @@ export default function BatchesPage() {
                   <TableCell>{batch.source_name || "-"}</TableCell>
                   <TableCell>{batch.gps_latitude && batch.gps_longitude ? `${batch.gps_latitude.toFixed(4)}, ${batch.gps_longitude.toFixed(4)}` : "-"}</TableCell>
                   <TableCell className="max-w-xs truncate">{batch.note || "-"}</TableCell>
+                  <TableCell>
+                    {batch.gps_latitude && batch.gps_longitude && process.env.NEXT_PUBLIC_OPENWEATHER_API_KEY ? (
+                      <WeatherWidget lat={batch.gps_latitude} lng={batch.gps_longitude} apiKey={process.env.NEXT_PUBLIC_OPENWEATHER_API_KEY} />
+                    ) : (
+                      <span className="text-xs text-muted-foreground">-</span>
+                    )}
+                  </TableCell>
                 </TableRow>
               ))}
             </TableBody>
@@ -210,8 +238,27 @@ export default function BatchesPage() {
     );
   };
 
+  // สร้าง markers สำหรับ LeafletMap
+  const mapMarkers: MapMarker[] = batches
+    .filter(b => b.gps_latitude && b.gps_longitude)
+    .map(b => ({ lat: b.gps_latitude!, lng: b.gps_longitude!, label: b.batch_code }));
+
   return (
     <div className="space-y-8">
+      <Card className="p-4">
+        <h2 className="text-xl font-bold mb-2">แผนที่รุ่น (Batch Map)</h2>
+        <LeafletMapClient
+          markers={mapMarkers}
+          height={400}
+          zoom={7}
+          center={mapMarkers.length ? mapMarkers[0] : { lat: 13.7563, lng: 100.5018 }}
+        />
+      </Card>
+      <div className="flex justify-end mb-2">
+        <Button variant="outline" onClick={() => exportBatchesToCSV(batches)}>
+          Export CSV
+        </Button>
+      </div>
       {/* Page Header */}
       <header className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>

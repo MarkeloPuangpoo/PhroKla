@@ -10,6 +10,7 @@ import {
 import { motion } from "framer-motion";
 import { Leaf, Sprout, Trees, TrendingUp } from "lucide-react";
 import { useRouter } from "next/navigation";
+import { WeatherWidget } from "@/components/WeatherWidget";
 
 // --- Define a vibrant and consistent color palette ---
 const COLORS = {
@@ -120,8 +121,8 @@ export default function AdminDashboardPage() {
       setError(null);
       try {
         const [seedlingsRes, batchesRes] = await Promise.all([
-          supabase.from("seedlings").select("id,species,height_range,count,batch_id"),
-          supabase.from("batches").select("id,batch_code,collected_at")
+          supabase.from("seedlings").select("id,species,height_range,count,batch_id,survived_count"),
+          supabase.from("batches").select("id,batch_code,collected_at,gps_latitude,gps_longitude")
         ]);
 
         if (seedlingsRes.error) throw seedlingsRes.error;
@@ -181,6 +182,54 @@ export default function AdminDashboardPage() {
     return { total: Number(total), speciesStats, heightStats, growthTrend, lastGrowthCount };
   }, [seedlings, batches]);
 
+  // เตรียมข้อมูล growthTrend สำหรับกราฟ
+  const growthTrend = useMemo(() => {
+    if (!seedlings.length || !batches.length) return [];
+    // รวม count ของ seedlings ตามวันที่เก็บ (collected_at)
+    const batchMap = Object.fromEntries(batches.map(b => [b.id, b.collected_at]));
+    const dateCount: Record<string, number> = {};
+    seedlings.forEach(s => {
+      const date = batchMap[s.batch_id];
+      if (date) dateCount[date] = (dateCount[date] || 0) + (s.count || 0);
+    });
+    return Object.entries(dateCount)
+      .sort(([a], [b]) => new Date(a).getTime() - new Date(b).getTime())
+      .map(([date, count]) => ({ date, count }));
+  }, [seedlings, batches]);
+
+  // Survival Rate Analysis
+  const survivalStats = useMemo(() => {
+    if (!seedlings.length) return { total: 0, survived: 0, rate: 0 };
+    const total = seedlings.reduce((sum, s) => sum + (s.count || 0), 0);
+    const survived = seedlings.reduce((sum, s) => sum + (s.survived_count || 0), 0);
+    const rate = total > 0 ? (survived / total) * 100 : 0;
+    return { total, survived, rate };
+  }, [seedlings]);
+
+  // Seasonal Trends
+  const monthOrder = ['ม.ค.','ก.พ.','มี.ค.','เม.ย.','พ.ค.','มิ.ย.','ก.ค.','ส.ค.','ก.ย.','ต.ค.','พ.ย.','ธ.ค.'];
+  const seasonalTrends = useMemo(() => {
+    if (!seedlings.length || !batches.length) return [];
+    const batchMap = Object.fromEntries(batches.map(b => [b.id, b.collected_at]));
+    const monthCount: Record<string, number> = {};
+    seedlings.forEach(s => {
+      const date = batchMap[s.batch_id];
+      if (date) {
+        const d = new Date(date);
+        const month = d.toLocaleDateString('th-TH', { year: '2-digit', month: 'short' });
+        monthCount[month] = (monthCount[month] || 0) + (s.count || 0);
+      }
+    });
+    return Object.entries(monthCount)
+      .sort(([a], [b]) => {
+        const [ma, ya] = a.split(' '); const [mb, yb] = b.split(' ');
+        const da = new Date(2000 + parseInt(ya), monthOrder.indexOf(ma));
+        const db = new Date(2000 + parseInt(yb), monthOrder.indexOf(mb));
+        return da.getTime() - db.getTime();
+      })
+      .map(([month, count]) => ({ month, count }));
+  }, [seedlings, batches]);
+
   // --- Render Logic with Loading/Error States ---
   if (loading) {
     return (
@@ -207,12 +256,25 @@ export default function AdminDashboardPage() {
      return <div className="flex h-full items-center justify-center text-muted-foreground">ไม่พบข้อมูลสำหรับแสดงผล</div>;
   }
 
+  const weatherApiKey = process.env.NEXT_PUBLIC_OPENWEATHER_API_KEY || "";
+  // หาพิกัด batch ล่าสุดที่มี gps ถ้าไม่มีใช้กรุงเทพฯ
+  const latestBatchWithGPS = batches.slice().reverse().find(b => b.gps_latitude && b.gps_longitude);
+  const weatherLat = latestBatchWithGPS?.gps_latitude || 13.7563;
+  const weatherLng = latestBatchWithGPS?.gps_longitude || 100.5018;
+
   return (
     <div className="flex flex-col gap-8">
       <header>
         <h1 className="text-3xl font-bold text-foreground">แดชบอร์ด</h1>
         <p className="text-muted-foreground">ภาพรวมข้อมูลโครงการ ณ วันที่ <ClientOnlyTimestamp /></p>
       </header>
+
+      {/* Weather summary */}
+      <div className="flex justify-end">
+        {weatherApiKey && (
+          <WeatherWidget lat={weatherLat} lng={weatherLng} apiKey={weatherApiKey} />
+        )}
+      </div>
 
       {/* Stat Cards */}
       <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-4">
@@ -230,7 +292,6 @@ export default function AdminDashboardPage() {
               <Tooltip content={<CustomTooltip />} />
               <Pie data={dashboardData.speciesStats} dataKey="value" nameKey="name" cx="50%" cy="50%" innerRadius={70} outerRadius={100} paddingAngle={5} labelLine={false}
                 label={({ cx, cy, midAngle, innerRadius, outerRadius, percent }) => {
-                  // **FIX 2:** Add checks for undefined properties
                   if (midAngle === undefined || percent === undefined || innerRadius === undefined || outerRadius === undefined) {
                     return null;
                   }
@@ -287,23 +348,74 @@ export default function AdminDashboardPage() {
             </BarChart>
           </ResponsiveContainer>
         </ChartCard>
-
-        <ChartCard title="จำนวนตามช่วงความสูง">
-           <ResponsiveContainer width="100%" height="100%">
-            <BarChart data={dashboardData.heightStats} margin={{ top: 5, right: 20, left: 0, bottom: 5 }}>
-              <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" vertical={false} />
-              <XAxis dataKey="name" tick={{ fontSize: 12 }} stroke="hsl(var(--muted-foreground))" />
-              <YAxis allowDecimals={false} tick={{ fontSize: 12 }} stroke="hsl(var(--muted-foreground))"/>
-              <Tooltip content={<CustomTooltip />} cursor={{ fill: 'hsl(var(--muted))' }}/>
-              <Bar dataKey="value" name="จำนวน" radius={[4, 4, 0, 0]}>
-                 {dashboardData.heightStats.map((entry, index) => (
-                  <Cell key={`cell-${index}`} fill={COLOR_PALETTE[index % COLOR_PALETTE.length]} />
-                ))}
-              </Bar>
-            </BarChart>
-          </ResponsiveContainer>
-        </ChartCard>
       </div>
+
+      {/* จำนวนตามช่วงความสูง (ย้ายมาที่นี่) */}
+      <Card className="p-4">
+        <CardHeader>
+          <CardTitle>จำนวนตามช่วงความสูง</CardTitle>
+        </CardHeader>
+        <CardContent>
+          {dashboardData.heightStats.length === 0 ? (
+            <div className="text-center text-muted-foreground py-8">ไม่มีข้อมูลสำหรับแสดงกราฟ</div>
+          ) : (
+            <ResponsiveContainer width="100%" height={220}>
+              <BarChart data={dashboardData.heightStats} margin={{ top: 5, right: 20, left: 0, bottom: 5 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" vertical={false} />
+                <XAxis dataKey="name" tick={{ fontSize: 12 }} stroke="hsl(var(--muted-foreground))" />
+                <YAxis allowDecimals={false} tick={{ fontSize: 12 }} stroke="hsl(var(--muted-foreground))"/>
+                <Tooltip content={<CustomTooltip />} cursor={{ fill: 'hsl(var(--muted))' }}/>
+                <Bar dataKey="value" name="จำนวน" radius={[4, 4, 0, 0]}>
+                   {dashboardData.heightStats.map((entry, index) => (
+                    <Cell key={`cell-${index}`} fill={COLOR_PALETTE[index % COLOR_PALETTE.length]} />
+                  ))}
+                </Bar>
+              </BarChart>
+            </ResponsiveContainer>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* กราฟ Growth Rate, Survival Rate, Seasonal Trends ... */}
+      <Card className="p-4">
+        <div className="font-bold mb-2">อัตราการเจริญเติบโต (Growth Rate)</div>
+        <ResponsiveContainer width="100%" height={250}>
+          <LineChart data={growthTrend} margin={{ top: 10, right: 30, left: 0, bottom: 0 }}>
+            <CartesianGrid strokeDasharray="3 3" />
+            <XAxis dataKey="date" tickFormatter={d => new Date(d).toLocaleDateString('th-TH', { month: 'short', day: 'numeric' })} />
+            <YAxis allowDecimals={false} />
+            <Tooltip formatter={(v: any) => v.toLocaleString()} labelFormatter={d => `วันที่ ${new Date(d).toLocaleDateString('th-TH')}`} />
+            <Line type="monotone" dataKey="count" stroke="#10b981" strokeWidth={2} dot />
+          </LineChart>
+        </ResponsiveContainer>
+      </Card>
+      <Card className="p-4">
+        <div className="font-bold mb-2">อัตราการรอดตาย (Survival Rate)</div>
+        <div className="flex items-center gap-6">
+          <div className="text-3xl font-bold text-green-600">{survivalStats.rate.toFixed(1)}%</div>
+          <div className="text-muted-foreground">รอด {survivalStats.survived.toLocaleString()} / ปลูก {survivalStats.total.toLocaleString()} ต้น</div>
+        </div>
+        <ResponsiveContainer width="100%" height={120}>
+          <BarChart data={[{ name: "Survived", value: survivalStats.survived }, { name: "Dead", value: survivalStats.total - survivalStats.survived }]}> 
+            <Bar dataKey="value" fill="#10b981" />
+            <XAxis dataKey="name" />
+            <YAxis allowDecimals={false} hide />
+            <Tooltip />
+          </BarChart>
+        </ResponsiveContainer>
+      </Card>
+      <Card className="p-4">
+        <div className="font-bold mb-2">แนวโน้มตามฤดูกาล (Seasonal Trends)</div>
+        <ResponsiveContainer width="100%" height={220}>
+          <BarChart data={seasonalTrends} margin={{ top: 10, right: 30, left: 0, bottom: 0 }}>
+            <CartesianGrid strokeDasharray="3 3" />
+            <XAxis dataKey="month" />
+            <YAxis allowDecimals={false} />
+            <Tooltip formatter={(v: any) => v.toLocaleString()} labelFormatter={d => `เดือน ${d}`}/>
+            <Bar dataKey="count" fill="#3b82f6" />
+          </BarChart>
+        </ResponsiveContainer>
+      </Card>
     </div>
   );
 }
